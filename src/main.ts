@@ -1,29 +1,70 @@
-// Apify SDK - toolkit for building Apify Actors (Read more at https://docs.apify.com/sdk/js/)
-import { Actor } from 'apify';
-// Crawlee - web scraping and browser automation library (Read more at https://crawlee.dev)
-// import { CheerioCrawler } from 'crawlee';
-
-// this is ESM project, and as such, it requires you to specify extensions in your relative imports
-// read more about this here: https://nodejs.org/docs/latest-v18.x/api/esm.html#mandatory-file-extensions
-// note that we need to use `.js` even when inside TS files
-// import { router } from './routes.js';
-
-// The init() call configures the Actor for its environment. It's recommended to start every Actor with an init()
+import { Actor, log } from 'apify';
+import { scope } from 'arktype';
 await Actor.init();
+
+interface Input {
+	actorName: string,
+	runId?: string
+}
+
+let {
+	actorName,
+	runId
+} = (await Actor.getInput<Input>())!
 
 const client = Actor.newClient();
 
-// const { id } = await Actor.call('jameender/pokemon-scraper');
+if (!runId) {
+	log.info("Starting the Actor..")
 
-const run = client.run("Kp80QfqUQ2bFsESEo");
+	const { id } = await Actor.call(actorName, { testIO: true });
+	runId = id;
+
+	log.info("Actor finished..")
+}
+
+const run = client.run(runId);
+
+const keyValue = run.keyValueStore()
+
+const schemas = (await keyValue.getRecord('IO_SCHEMAS'))!.value as Record<string, any>
+const inputData = (await keyValue.getRecord('IO_DATA'))!.value as Record<string, any[]>
+const outputData = await run.dataset().listItems() as { items: any[] }
 
 
-const dataset = run.dataset();
-const keyValue = run.apifyClient.keyValueStores()
+const compiledInputSchemas: Record<string, any> = {}
+const compiledOutputSchemas: any[] = []
 
-console.log(keyValue);
+for (const label of Object.keys(schemas['INPUT'])) {
+	compiledInputSchemas[label] = scope(schemas['INPUT'][label]).compile()
+}
 
+for (const schema of schemas['OUTPUT']) {
+	compiledOutputSchemas.push(scope(schema).compile())
+}
 
+for (const label of Object.keys(inputData)) {
+	for (const entry of inputData[label]) {
+		const { data, problems } = compiledInputSchemas[label].$type(entry);
 
-// Gracefully exit the Actor process. It's recommended to quit all Actors with an exit()
+		if (problems) {
+			log.error(problems)	
+		}
+	}
+}
+
+for (const entry of outputData.items) {
+	let valid = false
+
+	for (const outputSchema of compiledOutputSchemas) {
+		const { data, problems } = outputSchema.$type(entry);
+
+		if (!problems) valid = true;
+	}
+
+	if (!valid) {
+		log.error(`Output error on entry: ${JSON.stringify(entry, null, 4)}`)
+	}
+}
+
 await Actor.exit();
