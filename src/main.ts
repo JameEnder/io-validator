@@ -1,5 +1,6 @@
 import { Actor, log } from 'apify';
-import { scope } from 'arktype';
+import { type } from 'arktype';
+import { parseAsSchema } from '@arktype/schema';
 await Actor.init();
 
 interface Input {
@@ -36,19 +37,19 @@ const compiledInputSchemas: Record<string, any> = {}
 const compiledOutputSchemas: any[] = []
 
 for (const label of Object.keys(schemas['INPUT'])) {
-	compiledInputSchemas[label] = scope(schemas['INPUT'][label]).compile()
+	compiledInputSchemas[label] = parseAsSchema(schemas['INPUT'][label])
 }
 
 for (const schema of schemas['OUTPUT']) {
-	compiledOutputSchemas.push(scope(schema).compile())
+	compiledOutputSchemas.push(parseAsSchema(schema))
 }
 
 for (const label of Object.keys(inputData)) {
 	for (const entry of inputData[label]) {
-		const { data, problems } = compiledInputSchemas[label].$type(entry);
+		const out = compiledInputSchemas[label](entry);
 
-		if (problems) {
-			log.error(problems)	
+		if (out instanceof type.errors) {
+			log.error(out.summary)	
 		}
 	}
 }
@@ -57,9 +58,12 @@ for (const entry of outputData.items) {
 	let valid = false
 
 	for (const outputSchema of compiledOutputSchemas) {
-		const { data, problems } = outputSchema.$type(entry);
+		const out = outputSchema(entry)
 
-		if (!problems) valid = true;
+		if (!(out instanceof type.errors)) {
+			valid = true;
+			break;
+		}
 	}
 
 	if (!valid) {
