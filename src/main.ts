@@ -30,19 +30,19 @@ const run = client.run(runId);
 
 const keyValue = run.keyValueStore()
 
-const schemas = (await keyValue.getRecord('IO_SCHEMAS'))!.value as Record<string, any>
-const inputData = (await keyValue.getRecord('IO_DATA'))!.value as Record<string, any[]>
+const schemas = (await keyValue.getRecord('IO_SCHEMAS'))?.value as Record<string, any> || {}
+const inputData = (await keyValue.getRecord('IO_DATA'))?.value as Record<string, any[]> || {}
 const outputData = await run.dataset().listItems() as { items: any[] }
 
 
 const compiledInputSchemas: Record<string, any> = {}
 const compiledOutputSchemas: any[] = []
 
-for (const label of Object.keys(schemas['INPUT'])) {
+for (const label of Object.keys(schemas['INPUT'] || {})) {
 	compiledInputSchemas[label] = parseAsSchema(schemas['INPUT'][label])
 }
 
-for (const schema of schemas['OUTPUT']) {
+for (const schema of schemas['OUTPUT'] || {}) {
 	compiledOutputSchemas.push(parseAsSchema(schema))
 }
 
