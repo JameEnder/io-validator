@@ -5,12 +5,14 @@ await Actor.init();
 
 interface Input {
 	actorName: string,
-	runId?: string
+	runId?: string,
+	actorInput?: Record<string, any>,
 }
 
 let {
 	actorName,
-	runId
+	runId,
+	actorInput = {}
 } = (await Actor.getInput<Input>())!
 
 const client = Actor.newClient();
@@ -18,7 +20,7 @@ const client = Actor.newClient();
 if (!runId) {
 	log.info("Starting the Actor..")
 
-	const { id } = await Actor.call(actorName, { testIO: true });
+	const { id } = await Actor.call(actorName, { testIO: true, ...actorInput });
 	runId = id;
 
 	log.info("Actor finished..")
