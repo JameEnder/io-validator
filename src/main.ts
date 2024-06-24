@@ -20,7 +20,7 @@ const client = Actor.newClient();
 if (!runId) {
 	log.info("Starting the Actor..")
 
-	const { id } = await Actor.call(actorName, { testIO: true, ...actorInput });
+	const { id } = await Actor.call(actorName, { testOut: true, ...actorInput });
 	runId = id;
 
 	log.info("Actor finished..")
@@ -31,46 +31,34 @@ const run = client.run(runId);
 const keyValue = run.keyValueStore()
 
 const schemas = ((await keyValue.getRecord('IO_SCHEMAS'))?.value as Record<string, any>) || {}
-const inputData = ((await keyValue.getRecord('IO_DATA'))?.value as Record<string, any[]>) || {}
 const outputData = await run.dataset().listItems() as { items: any[] }
 
+const compiledOutputSchemas: Record<string, any> = []
 
-const compiledInputSchemas: Record<string, any> = {}
-const compiledOutputSchemas: any[] = []
-
-for (const label of Object.keys(schemas['INPUT'] || {})) {
-	compiledInputSchemas[label] = parseAsSchema(schemas['INPUT'][label])
-}
-
-for (const schema of schemas['OUTPUT'] || {}) {
-	compiledOutputSchemas.push(parseAsSchema(schema))
-}
-
-for (const label of Object.keys(inputData)) {
-	for (const entry of inputData[label]) {
-		const out = compiledInputSchemas[label](entry);
-
-		if (out instanceof type.errors) {
-			log.error(out.summary)	
-		}
-	}
+for (const [schemaName, schema] of Object.entries(schemas['OUTPUT']) || {}) {
+	compiledOutputSchemas[schemaName] = parseAsSchema(schema)
 }
 
 for (const entry of outputData.items) {
-	let valid = false
+	let passed = false
+	const errors: Record<string, type.errors> = {};
 
-	for (const outputSchema of compiledOutputSchemas) {
-		const out = outputSchema(entry)
+	for (const [schemaName, schema] of Object.entries(compiledOutputSchemas)) {
+		const result = schema(entry)
 
-		if (!(out instanceof type.errors)) {
-			valid = true;
-			break;
+		if (result instanceof type.errors) {
+			errors[schemaName] = result;
 		}
+
+		passed = true;
+		break;
 	}
 
-	if (!valid) {
-		log.error(`Output error on entry: ${JSON.stringify(entry, null, 4)}`)
-	}
+	if (!passed) {
+        for (const [schemaName, error] of Object.entries(errors)) {
+            log.error(`Error with schema: ${schemaName}\n${error!.summary}`);
+        }
+    }
 }
 
 await Actor.exit();
